@@ -184,7 +184,20 @@ void limits_go_home(uint8_t cycle_mask)
       // Set target location for active axes and setup computation for homing rate.
       if (bit_istrue(cycle_mask,bit(idx))) {
         n_active_axis++;
-        sys.position[idx] = 0;
+        #ifdef COREXY
+          if (idx == X_AXIS) {
+            int32_t axis_position = system_convert_corexy_to_y_axis_steps(sys.position);
+            sys.position[A_MOTOR] = axis_position;
+            sys.position[B_MOTOR] = -axis_position;
+          } else if (idx == Y_AXIS) {
+            int32_t axis_position = system_convert_corexy_to_x_axis_steps(sys.position);
+            sys.position[A_MOTOR] = sys.position[B_MOTOR] = axis_position;
+          } else { 
+            sys.position[Z_AXIS] = 0; 
+          }
+        #else
+          sys.position[idx] = 0;
+        #endif
         // Set target direction based on cycle mask and homing cycle approach state.
         // NOTE: This happens to compile smaller than any other implementation tried.
         if (bit_istrue(settings.homing_dir_mask,bit(idx))) {
@@ -219,7 +232,14 @@ void limits_go_home(uint8_t cycle_mask)
       limit_state = limits_get_state();
       for (idx=0; idx<N_AXIS; idx++) {
           if (axislock & step_pin[idx]) {
-			if (limit_state & (1 << idx)) { axislock &= ~(step_pin[idx]); }
+            if (limit_state & (1 << idx)) { 
+              #ifdef COREXY
+                if (idx==Z_AXIS) { axislock &= ~(step_pin[Z_AXIS]); }
+                else { axislock &= ~(step_pin[A_MOTOR]|step_pin[B_MOTOR]); }
+              #else
+                axislock &= ~(step_pin[idx]); 
+              #endif
+            }
           }
         }
         sys.homing_axis_lock = axislock;
@@ -269,9 +289,6 @@ void limits_go_home(uint8_t cycle_mask)
   // set up pull-off maneuver from axes limit switches that have been homed. This provides
   // some initial clearance off the switches and should also help prevent them from falsely
   // triggering when hard limits are enabled or when more than one axes shares a limit pin.
-  #ifdef COREXY
-    int32_t off_axis_position = 0;
-  #endif
   int32_t set_axis_position;
   // Set machine positions for homed limit switches. Don't update non-homed axes.
   for (idx=0; idx<N_AXIS; idx++) {
@@ -287,15 +304,15 @@ void limits_go_home(uint8_t cycle_mask)
         }
       #endif
       
-      #ifdef COREXY
+      #ifdef COREXY    
         if (idx==X_AXIS) { 
-          off_axis_position = (sys.position[B_MOTOR] - sys.position[A_MOTOR])/2;
-          sys.position[A_MOTOR] = set_axis_position - off_axis_position;
-          sys.position[B_MOTOR] = set_axis_position + off_axis_position;          
+          int32_t off_axis_position = system_convert_corexy_to_y_axis_steps(sys.position);
+          sys.position[A_MOTOR] = set_axis_position + off_axis_position;
+          sys.position[B_MOTOR] = set_axis_position - off_axis_position;          
         } else if (idx==Y_AXIS) {
-          off_axis_position = (sys.position[A_MOTOR] + sys.position[B_MOTOR])/2;
-          sys.position[A_MOTOR] = off_axis_position - set_axis_position;
-          sys.position[B_MOTOR] = off_axis_position + set_axis_position;
+          int32_t off_axis_position = system_convert_corexy_to_x_axis_steps(sys.position);
+          sys.position[A_MOTOR] = off_axis_position + set_axis_position;
+          sys.position[B_MOTOR] = off_axis_position - set_axis_position;
         } else {
           sys.position[idx] = set_axis_position;
         }        
@@ -465,23 +482,22 @@ void limits_go_home(uint8_t cycle_mask)
 void limits_soft_check(float *target)
 {
   uint8_t idx;
-  uint8_t soft_limit_error = false;
   for (idx=0; idx<N_AXIS; idx++) {
    
     #ifdef HOMING_FORCE_SET_ORIGIN
       // When homing forced set origin is enabled, soft limits checks need to account for directionality.
       // NOTE: max_travel is stored as negative
       if (bit_istrue(settings.homing_dir_mask,bit(idx))) {
-        if (target[idx] < 0 || target[idx] > -settings.max_travel[idx]) { soft_limit_error = true; }
+        if (target[idx] < 0 || target[idx] > -settings.max_travel[idx]) { sys.soft_limit = true; }
       } else {
-        if (target[idx] > 0 || target[idx] < settings.max_travel[idx]) { soft_limit_error = true; }
+        if (target[idx] > 0 || target[idx] < settings.max_travel[idx]) { sys.soft_limit = true; }
       }
     #else  
       // NOTE: max_travel is stored as negative
-      if (target[idx] > 0 || target[idx] < settings.max_travel[idx]) { soft_limit_error = true; }
+      if (target[idx] > 0 || target[idx] < settings.max_travel[idx]) { sys.soft_limit = true; }
     #endif
     
-    if (soft_limit_error) {
+    if (sys.soft_limit) {
       // Force feed hold if cycle is active. All buffered blocks are guaranteed to be within 
       // workspace volume so just come to a controlled stop so position is not lost. When complete
       // enter alarm mode.

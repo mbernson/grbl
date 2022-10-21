@@ -205,13 +205,15 @@ void spindle_set_state(uint8_t state, float rpm)
           SPINDLE_ENABLE_PORT |= (1<<SPINDLE_ENABLE_BIT);
         #endif
       #endif
-
+      
     #else
+      // NOTE: Without variable spindle, the enable bit should just turn on or off, regardless
+      // if the spindle speed value is zero, as its ignored anyhow.      
       #ifdef INVERT_SPINDLE_ENABLE_PIN
-		SPINDLE_ENABLE_PORT &= ~(1<<SPINDLE_ENABLE_BIT);
-	  #else
-		SPINDLE_ENABLE_PORT |= (1<<SPINDLE_ENABLE_BIT);
-	  #endif
+        SPINDLE_ENABLE_PORT &= ~(1<<SPINDLE_ENABLE_BIT);
+      #else
+        SPINDLE_ENABLE_PORT |= (1<<SPINDLE_ENABLE_BIT);
+      #endif
     #endif
 
   }
