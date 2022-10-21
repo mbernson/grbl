@@ -32,12 +32,12 @@
 
 /* If POLAR is enabled the coordinates of the machine movement are changed to polar.
  * To active this feature is required to know the distance (d) between the two motors
- * 		___d___
-		\     /       |
-	x_pol\   / y_pol  | y
-		  \ /         |
-	   ___ +
- *	    x
+ *     ___d___
+ *     \     /       |
+ * x_pol\   / y_pol  | y
+ *       \ /         |
+ *   ___  +
+ *    x
  */
 #define POLAR
 
